@@ -9,14 +9,18 @@
 * **Environment:** Cyber Range / Production / Lab
 * **Goal:** Investigate unusual network latency and connection issues to determine if activity was benign, misconfigured, or malicious.
 * **Compromised Host:** `danielletargetm` (Local IP: `10.0.0.99`)
-* **Targeted Account(s):** SYSTEM (for script execution)
-* **Summary:** A threat hunt was initiated following network monitoring alerts for unusual latency and repeated failed connection attempts originating from `danielletargetm`. Investigation revealed a PowerShell script, `portscan.ps1`, executed by the SYSTEM account from `C:\programdata`, performing internal network reconnaissance via port scanning. The device was isolated, scanned for malware (no detections), and an incident ticket was submitted for reimaging. The activity was confirmed as malicious reconnaissance.
+* **Targeted Account(s):** `SYSTEM account` (for script execution)
+* **Summary:** A threat hunt was initiated following network monitoring alerts for unusual latency and repeated failed connection attempts originating from `danielletargetm`. Investigation revealed a PowerShell script, `portscan.ps1`, executed by the `SYSTEM account` from `C:\programdata`, performing internal network reconnaissance via port scanning. The device was isolated, scanned for malware (no detections), and an incident ticket was submitted for reimaging. The activity was confirmed as malicious reconnaissance.
+
+
+  ![image](https://github.com/user-attachments/assets/ddcc4258-34c6-40fd-836a-77541052a918)
+  
 
 ---
 
 ## 2. Scenario Overview
 
-During routine performance monitoring, an internal host, `danielletargetm`, was flagged for unusual network latency and consistent connection failures. This anomaly prompted a deeper threat hunting investigation to ascertain the nature of the activity. The primary concern was to identify if the behavior stemmed from a benign misconfiguration, a broken application, or a more insidious malicious intent.
+During routine performance monitoring, an internal host, `danielletargetm`, was flagged for unusual network latency and consistent connection failures. This anomaly prompted a deeper threat hunting investigation to ascertain the nature of the activity. The primary concern was to identify if the behavior was benign or a more malicious intent.
 
 ---
 
@@ -62,7 +66,7 @@ During routine performance monitoring, an internal host, `danielletargetm`, was 
     DeviceNetworkEvents
     | where DeviceName contains "danielletargetm"
     | where ActionType == "ConnectionFailed"
-    | summarize ConnectionCount = count() by DeviceName, ActionType, LocalIP
+    | summarize ConnectionCount = count() by DeviceName, ActionType, LocalIP,  RemoteIP
     | order by ConnectionCount desc
     ```kql
     DeviceNetworkEvents
@@ -74,17 +78,22 @@ During routine performance monitoring, an internal host, `danielletargetm`, was 
 
   * **KQL Output** ⏬
 
-      ![KQL 3](https://github.com/user-attachments/assets/2074c87b-b193-4e0a-99de-66067b88a06a)
+      ![image](https://github.com/user-attachments/assets/ee0f86d7-a902-4d49-8337-94135d59dcce)
+
+       ---
 
       ![KQL 4](https://github.com/user-attachments/assets/b2e446d6-154e-48c6-a5af-a7d78d911fb3)
+      
 
+      ---
+      ![image](https://github.com/user-attachments/assets/1e8ece07-d075-4e67-b86f-da492d40fd23)
 
 
 * **What We Found:**
     * `danielletargetm` (Local IP: `10.0.0.99`) showed 46 failed connection attempts.
     * Analysis of `RemoteIP` and `RemotePort` revealed a sequential port scan targeting `10.0.0.5` across common TCP ports (e.g., 21, 22, 80, 443, 3389).
     * The initiating process for these connections was identified as `powershell.exe` executing `C:\programdata\portscan.ps1` with an `-ExecutionPolicy Bypass` flag.
-    * Bursts of activity were observed at 12:38 PM and 1:45 PM UTC, with a full scan logged at 16:38 UTC.
+    * Bursts of activity were observed at 12:38 PM and 1:45 PM, the earliest port scan activity logged at `2025-05-31T16:38:07Z` UTC.
 
 * **Interpretation:** The high volume of failed connections and the sequential nature of the targeted ports strongly indicated an intentional port scan. The use of PowerShell with `ExecutionPolicy Bypass` and the suspicious `C:\programdata` path for `portscan.ps1` immediately raised red flags, pointing towards malicious or unauthorized reconnaissance rather than a benign misconfiguration. This behavior is typical of an attacker attempting to enumerate services on internal hosts.
 
@@ -98,7 +107,7 @@ During routine performance monitoring, an internal host, `danielletargetm`, was 
 * **PEAK Step:** Analyze, Act
 * **MITRE Tactics:** Execution, Persistence, Defense Evasion
 * **Techniques Expected / Validated:** PowerShell (T1059.001), Valid Accounts (T1078), Obfuscated Files/Scripts (T1027)
-* **What We Investigated:** We focused on the process execution details related to `portscan.ps1` to understand its launch time, initiating account, and command-line arguments. This helped confirm the nature of the execution and potential privilege escalation.
+* **What We Investigated:** We focused on the process execution details related to `portscan.ps1` to understand its launch time, initiating account, and command-line arguments. This helped confirm the nature of the execution and potential privilege escalation. Upon gaining access to the compromised device, the `portscan.ps1` PowerShell script was directly examined.
 
 * **Query Input 🔽**
     ```kql
@@ -118,12 +127,13 @@ During routine performance monitoring, an internal host, `danielletargetm`, was 
         
 * **What We Found:**
     * The `portscan.ps1` script was launched at `2025-05-31T16:37:35Z`.
-    * Crucially, the script was executed by the **SYSTEM account**.
+    * Crucially, the script was executed by the `SYSTEM account`.
     * The full command line was `powershell.exe -ExecutionPolicy Bypass -File C:\programdata\portscan.ps1`.
-    * ![powershell](https://github.com/user-attachments/assets/a82ea14d-f12c-4886-9157-45205c83fe06)
+    * Screenshot of `portscan.ps1`:
+        ![powershell](https://github.com/user-attachments/assets/a82ea14d-f12c-4886-9157-45205c83fe06)
 
 
-* **Interpretation:** Execution by the SYSTEM account is highly unusual for a legitimate user-initiated script and suggests either a compromised SYSTEM process, a malicious scheduled task, or privilege escalation. The `-ExecutionPolicy Bypass` flag is a common tactic for attackers to circumvent security controls. This confirmed the malicious nature of the activity and indicated a potential compromise of the SYSTEM account for persistence or broader impact.
+* **Interpretation:** Execution by the `SYSTEM account` is highly unusual for a legitimate user-initiated script and suggests either a compromised SYSTEM process, a malicious scheduled task, or privilege escalation. The `-ExecutionPolicy Bypass` flag is a common tactic for attackers to circumvent security controls. This confirmed the malicious nature of the activity and indicated a potential compromise of the `SYSTEM account` for persistence or broader impact.
 
 * **Mapped MITRE Techniques:**
     | Tactic          | Technique ID | Description                                     |
@@ -136,13 +146,12 @@ During routine performance monitoring, an internal host, `danielletargetm`, was 
 
 ## 6. Timeline of Attacker Activity
 
-| Timestamp (UTC)         | Event                                                                                             |
-| :---------------------- | :------------------------------------------------------------------------------------------------ |
-| 2025-05-31 12:38:00     | Initial `portscan.ps1` execution attempt observed, initiating first burst of failed connections.    |
-| 2025-05-31 13:45:00     | Second burst of port scanning activity detected.                                                  |
-| 2025-05-31 16:37:35     | `portscan.ps1` launched from `C:\programdata` by SYSTEM account.                                  |
-| 2025-05-31 16:38:07     | Full scan of `10.0.0.5` logged, targeting >20 common ports, confirming active reconnaissance.     |
-| Post-scan               | `danielletargetm` isolated via MDE; full malware scan initiated.                                  |
+| Timestamp (UTC)         | Event                                                                                         |
+| :---------------------- | :-------------------------------------------------------------------------------------------- |
+| 2025-05-31 16:37:35     | `portscan.ps1` launched from `C:\programdata` by `SYSTEM` account.                             |
+| 2025-05-31 16:38:07     | Initial `portscan.ps1` execution attempt observed, initiating first burst of failed connections.  |
+| 2025-05-31 17:44:50    | Second burst of port scanning activity detected.                                               |
+| Post-scan               | `danielletargetm` isolated via MDE; full malware scan initiated.                              |
 
 ---
 
@@ -152,7 +161,7 @@ During routine performance monitoring, an internal host, `danielletargetm`, was 
 | :-------------- | :----------- | :------------------------- | :------------------------------------------------------------------------ |
 | Discovery       | T1046        | Network Service Scanning   | Repeated failed connections to sequential ports on `10.0.0.5`             |
 | Execution       | T1059.001    | PowerShell                 | `powershell.exe -ExecutionPolicy Bypass -File C:\programdata\portscan.ps1` |
-| Persistence     | T1078        | Valid Accounts             | Script executed by `SYSTEM` account                                       |
+| Persistence     | T1078        | Valid Accounts             | Script executed by `SYSTEM account`                                       |
 | Defense Evasion | T1027        | Obfuscated Files/Scripts   | Use of `-ExecutionPolicy Bypass` and suspicious `C:\programdata` path     |
 
 ---
@@ -179,13 +188,13 @@ During routine performance monitoring, an internal host, `danielletargetm`, was 
 | **Application Whitelisting**| Consider implementing application whitelisting to prevent unauthorized executables and scripts from running. |
 | **User Education** | Educate users on the risks of executing unknown scripts and the importance of reporting suspicious activity. |
 | **Incident Response**| Review and refine incident response playbooks for rapid containment and eradication of reconnaissance activities. |
-| **Vulnerability Management**| Ensure all internal systems are regularly patched and hardened to minimize the attack surface for reconnaissance and lateral movement. |
+| **Vulnerability Management**| Ensure all internal systems are regularly patched to minimize the attack surface for reconnaissance and lateral movement. |
 
 ---
 
 ## 10. Conclusion
 
-This threat hunt successfully identified and contained a malicious port scanning activity originating from `danielletargetm`. The investigation confirmed that a PowerShell script, executed by the SYSTEM account, was performing internal reconnaissance, validating our primary hypothesis. While no malware was detected post-isolation, the nature of the activity necessitated a full reimaging of the device to ensure complete eradication of any potential hidden threats or persistence mechanisms. The incident provided valuable lessons, particularly regarding the need for enhanced scrutiny of PowerShell execution, SYSTEM-level processes, and the importance of context in distinguishing benign IT automation from malicious reconnaissance. Continuous monitoring and proactive defense strategies remain paramount to protect customer environments.
+This threat hunt successfully identified and contained a malicious port scanning activity originating from `danielletargetm`. The investigation confirmed that a PowerShell script, executed by the `SYSTEM account`, was performing internal reconnaissance, validating our primary hypothesis. While no malware was detected post-isolation, the nature of the activity necessitated a full reimaging of the device to ensure complete eradication of any potential hidden threats or persistence mechanisms. The incident provided valuable lessons, particularly regarding the need for closer examination of PowerShell execution, SYSTEM-level processes, and the importance of context in distinguishing benign IT automation from malicious reconnaissance. 
 
 ---
 
