@@ -1,5 +1,5 @@
 
-# 🔍 Threat Hunt & Port Scan Detection: Sudden Network Slowdown 
+# 🔍 Threat Hunt: Sudden Network Slowdown 
 
 ## 1. Executive Summary
 
